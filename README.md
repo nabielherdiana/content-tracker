@@ -178,7 +178,7 @@ Checklist:
 - Variable `NEXT_PUBLIC_SITE_URL` mengarah ke domain production.
 - Jika pakai Gemini saja, `OPENAI_API_KEY` dikosongkan.
 
-## Custom Domain `.my.id`
+## Custom Domain
 
 1. Tambahkan custom domain di Vercel/Netlify.
 2. Arahkan DNS di registrar:
