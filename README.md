@@ -2,6 +2,10 @@
 
 Production-ready web app untuk content creator high-workload (40+ konten/bulan) dengan dashboard operasional, task management, custom fields dinamis, dan AI import workflow.
 
+## Live Website
+
+- Production URL: [http://aicontenttracker.netlify.app](http://aicontenttracker.netlify.app)
+
 ## Stack
 
 - Next.js App Router + TypeScript strict
@@ -148,7 +152,7 @@ Akses:
 4. Isi environment variables di Netlify UI:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `NEXT_PUBLIC_SITE_URL` = URL site Netlify production (contoh: `https://content-tracker-ai.netlify.app`)
+   - `NEXT_PUBLIC_SITE_URL` = URL site Netlify production (contoh: `https://aicontenttracker.netlify.app`)
    - `GOOGLE_GENERATIVE_AI_API_KEY`
    - `GOOGLE_MODEL` (disarankan: `gemini-2.0-flash` atau model Gemini aktif lain)
    - Optional: `OPENAI_API_KEY`, `OPENAI_API_BASE_URL`, `OPENAI_MODEL`
