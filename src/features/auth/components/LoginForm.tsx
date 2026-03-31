@@ -12,13 +12,29 @@ export function LoginForm() {
   const supabase = createClient()
   const { t } = useI18n()
 
+  const resolveOAuthBaseUrl = () => {
+    const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim()
+    if (envSiteUrl) {
+      return envSiteUrl.replace(/\/+$/, '')
+    }
+
+    if (typeof window === 'undefined') return ''
+
+    const url = new URL(window.location.origin)
+    if (url.protocol === 'http:' && url.hostname !== 'localhost') {
+      url.protocol = 'https:'
+    }
+    return url.toString().replace(/\/+$/, '')
+  }
+
   const handleGoogleLogin = async () => {
     setIsLoading(true)
     try {
+      const baseUrl = resolveOAuthBaseUrl()
       await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+          redirectTo: `${baseUrl}/auth/callback?next=/dashboard`,
         },
       })
     } catch {
