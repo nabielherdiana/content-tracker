@@ -5,11 +5,12 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { deleteTask, duplicateTask, updateTaskStatus } from '@/lib/actions'
 import { toast } from 'sonner'
-import { Copy, Pencil, Trash2, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, Loader2, Pencil, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { CONTENT_STATUSES, type ContentStatus } from '@/types'
 import { useI18n } from '@/components/providers/LanguageProvider'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 const QUICK_STATUSES = CONTENT_STATUSES.filter((status) => status !== 'Backlog')
 
@@ -24,6 +25,8 @@ export function TaskDetailActions({ taskId, currentStatus }: { taskId: string; c
   const isEn = language === 'en'
   const [status, setStatus] = React.useState<ContentStatus>(normalizeStatus(currentStatus))
   const [isStatusUpdating, setIsStatusUpdating] = React.useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = React.useState(false)
+  const [isDeleting, setIsDeleting] = React.useState(false)
 
   const handleDuplicate = async () => {
     const result = await duplicateTask(taskId)
@@ -36,17 +39,16 @@ export function TaskDetailActions({ taskId, currentStatus }: { taskId: string; c
   }
 
   const handleDelete = async () => {
-    const ok = window.confirm(
-      isEn ? 'Delete this task? This action cannot be undone.' : 'Hapus task ini? Tindakan tidak bisa dibatalkan.',
-    )
-    if (!ok) return
-
+    setIsDeleting(true)
     const result = await deleteTask(taskId)
     if (result.error) {
       toast.error(result.error)
+      setIsDeleting(false)
       return
     }
     toast.success(isEn ? 'Task deleted' : 'Task berhasil dihapus')
+    setIsDeleteDialogOpen(false)
+    setIsDeleting(false)
     router.push('/tasks')
   }
 
@@ -115,10 +117,50 @@ export function TaskDetailActions({ taskId, currentStatus }: { taskId: string; c
         <CheckCircle2 className="mr-2 w-4 h-4" />
         {isEn ? 'Mark Done' : 'Tandai Selesai'}
       </Button>
-      <Button variant="destructive" onClick={handleDelete}>
+      <Button variant="destructive" onClick={() => setIsDeleteDialogOpen(true)}>
         <Trash2 className="mr-2 w-4 h-4" />
         {isEn ? 'Delete' : 'Hapus'}
       </Button>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="max-w-md border-border/70 bg-card p-0 shadow-2xl shadow-black/20">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <div className="mb-2 inline-flex h-11 w-11 items-center justify-center rounded-full bg-destructive/12 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <DialogTitle className="text-xl">
+              {isEn ? 'Delete this task?' : 'Hapus task ini?'}
+            </DialogTitle>
+            <DialogDescription className="pt-1 text-sm">
+              {isEn
+                ? 'This action cannot be undone. All related task data will be removed permanently.'
+                : 'Tindakan ini tidak bisa dibatalkan. Seluruh data terkait task akan dihapus permanen.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="bg-muted/30 px-6 py-4">
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={isDeleting}
+            >
+              {isEn ? 'Cancel' : 'Batal'}
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              {isDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {isEn ? 'Deleting...' : 'Menghapus...'}
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {isEn ? 'Yes, Delete' : 'Ya, Hapus'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
