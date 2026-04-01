@@ -16,7 +16,7 @@ Production-ready web app untuk content creator high-workload (40+ konten/bulan) 
 - Recharts
 - OpenAI-compatible AI parser abstraction (+ Google fallback)
 
-## Fitur Utama (MVP++)
+## Fitur Utama
 
 - Auth wajib login (Google OAuth via Supabase)
 - Route protection `/dashboard`, `/tasks`, `/ai-import`, `/settings`
