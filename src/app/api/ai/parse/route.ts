@@ -7,6 +7,9 @@ import { aiParsedOutputSchema } from '@/validations/ai'
 const requestSchema = z.object({
   prompt: z.string().min(5).max(3000),
 })
+const AI_PARSE_COOLDOWN_MS = Number(process.env.AI_PARSE_COOLDOWN_MS ?? '3000')
+const AI_PARSE_WINDOW_MINUTES = 10
+const AI_PARSE_MAX_PER_WINDOW = Number(process.env.AI_PARSE_MAX_PER_10_MIN ?? '40')
 
 export async function POST(req: Request) {
   const supabase = await createClient()
@@ -29,6 +32,47 @@ export async function POST(req: Request) {
     }
 
     promptForLog = parsedBody.data.prompt
+
+    const { data: lastPromptLog } = await supabase
+      .from('ai_prompt_logs')
+      .select('created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (lastPromptLog?.created_at) {
+      const elapsedMs = Date.now() - new Date(lastPromptLog.created_at).getTime()
+      if (elapsedMs < AI_PARSE_COOLDOWN_MS) {
+        const waitSeconds = Math.ceil((AI_PARSE_COOLDOWN_MS - elapsedMs) / 1000)
+        return NextResponse.json(
+          {
+            error:
+              `Terlalu cepat. Coba lagi dalam ${waitSeconds} detik.` +
+              ` (Cooldown anti-spam aktif)`,
+          },
+          { status: 429 },
+        )
+      }
+    }
+
+    const windowStartIso = new Date(Date.now() - AI_PARSE_WINDOW_MINUTES * 60_000).toISOString()
+    const { count: windowCount } = await supabase
+      .from('ai_prompt_logs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', windowStartIso)
+
+    if ((windowCount ?? 0) >= AI_PARSE_MAX_PER_WINDOW) {
+      return NextResponse.json(
+        {
+          error:
+            `Batas request AI tercapai (${AI_PARSE_MAX_PER_WINDOW}/${AI_PARSE_WINDOW_MINUTES} menit). ` +
+            'Silakan tunggu sebentar lalu coba lagi.',
+        },
+        { status: 429 },
+      )
+    }
 
     const parsed = await parsePromptToStructured(parsedBody.data.prompt)
     const validated = aiParsedOutputSchema.parse(parsed.result)

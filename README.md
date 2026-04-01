@@ -106,6 +106,11 @@ Fallback (opsional):
 - `GOOGLE_GENERATIVE_AI_API_KEY`
 - `GOOGLE_MODEL`
 
+AI anti-spam (opsional, direkomendasikan):
+
+- `AI_PARSE_COOLDOWN_MS` (default `3000`)
+- `AI_PARSE_MAX_PER_10_MIN` (default `40`)
+
 Catatan provider AI:
 
 - Jika `OPENAI_API_KEY` diisi, parser akan mencoba provider OpenAI-compatible lebih dulu.

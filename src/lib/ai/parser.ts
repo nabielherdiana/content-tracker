@@ -383,7 +383,13 @@ function mapRawItemToAiParsedItem(raw: Record<string, unknown>, index: number): 
 
 function tryParseDirectJsonPrompt(prompt: string): AiParsedOutput | null {
   const trimmed = prompt.trim()
-  if (!(trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('```'))) {
+  const likelyJsonPayload =
+    trimmed.startsWith('[') ||
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('```') ||
+    /"[\w-]+"\s*:/.test(trimmed)
+
+  if (!likelyJsonPayload) {
     return null
   }
 
