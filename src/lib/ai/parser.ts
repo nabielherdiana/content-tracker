@@ -1,6 +1,7 @@
 import { generateObject } from 'ai'
 import { google } from '@ai-sdk/google'
 import { z } from 'zod'
+import type { ContentPriority, ContentStatus } from '@/types'
 import { aiParsedOutputSchema, type AiParsedOutput, type AiParsedItem } from '@/validations/ai'
 
 const OPENAI_TIMEOUT_MS = 12_000
@@ -45,13 +46,27 @@ const googleListModelsSchema = z.object({
 
 function extractJson(content: string): string {
   const trimmed = content.trim()
-  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
     return trimmed
   }
 
   const fenced = trimmed.match(/```json\s*([\s\S]*?)```/i)
   if (fenced?.[1]) {
     return fenced[1].trim()
+  }
+
+  const fencedGeneric = trimmed.match(/```\s*([\s\S]*?)```/i)
+  if (fencedGeneric?.[1]) {
+    return fencedGeneric[1].trim()
+  }
+
+  const firstBracket = trimmed.indexOf('[')
+  const lastBracket = trimmed.lastIndexOf(']')
+  if (firstBracket >= 0 && lastBracket > firstBracket) {
+    return trimmed.slice(firstBracket, lastBracket + 1)
   }
 
   const firstBrace = trimmed.indexOf('{')
@@ -216,6 +231,223 @@ function parseLocalizedDate(text: string | undefined): string | undefined {
   return undefined
 }
 
+function normalizeStatus(value: unknown): ContentStatus {
+  if (typeof value !== 'string') return 'To Do'
+  const key = value.trim().toLowerCase()
+
+  const map: Record<string, ContentStatus> = {
+    backlog: 'Backlog',
+    todo: 'To Do',
+    'to do': 'To Do',
+    'to-do': 'To Do',
+    'on going': 'On Going',
+    ongoing: 'On Going',
+    'in progress': 'On Going',
+    progress: 'On Going',
+    review: 'Review',
+    revision: 'Revision',
+    revisi: 'Revision',
+    done: 'Done',
+    selesai: 'Done',
+    complete: 'Done',
+    completed: 'Done',
+    cancelled: 'Cancelled',
+    canceled: 'Cancelled',
+    cancel: 'Cancelled',
+    batal: 'Cancelled',
+  }
+
+  return map[key] ?? 'To Do'
+}
+
+function normalizePriority(value: unknown): ContentPriority {
+  if (typeof value !== 'string') return 'Medium'
+  const key = value.trim().toLowerCase()
+
+  const map: Record<string, ContentPriority> = {
+    low: 'Low',
+    rendah: 'Low',
+    medium: 'Medium',
+    normal: 'Medium',
+    sedang: 'Medium',
+    high: 'High',
+    tinggi: 'High',
+    urgent: 'Urgent',
+    mendesak: 'Urgent',
+    asap: 'Urgent',
+  }
+
+  return map[key] ?? 'Medium'
+}
+
+function readFirst(raw: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    if (Object.hasOwn(raw, key) && raw[key] !== undefined && raw[key] !== null) {
+      return raw[key]
+    }
+  }
+  return undefined
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized.length > 0 ? normalized : undefined
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value)
+  }
+  return undefined
+}
+
+function toCommaSeparatedString(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    const list = value
+      .map((item) => toOptionalString(item))
+      .filter((item): item is string => Boolean(item))
+    return list.length > 0 ? list.join(', ') : undefined
+  }
+
+  return toOptionalString(value)
+}
+
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => toOptionalString(item))
+      .filter((item): item is string => Boolean(item))
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  }
+
+  return []
+}
+
+function toOptionalNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function mapRawItemToAiParsedItem(raw: Record<string, unknown>, index: number): AiParsedItem {
+  const title =
+    toOptionalString(readFirst(raw, ['title', 'judul_konten', 'judul', 'nama_konten'])) ??
+    `Task #${index + 1}`
+
+  const scriptOrOutlineRaw = readFirst(raw, ['script_or_outline', 'script_outline', 'outline'])
+  const scriptOrOutline = Array.isArray(scriptOrOutlineRaw)
+    ? scriptOrOutlineRaw
+        .map((item) => toOptionalString(item))
+        .filter((item): item is string => Boolean(item))
+        .join('\n')
+    : toOptionalString(scriptOrOutlineRaw)
+
+  return {
+    title,
+    brief: toOptionalString(readFirst(raw, ['brief', 'deskripsi', 'keterangan'])),
+    platform: toCommaSeparatedString(readFirst(raw, ['platform', 'platforms'])),
+    content_type: toCommaSeparatedString(readFirst(raw, ['content_type', 'tipe_konten', 'jenis_konten'])),
+    status: normalizeStatus(readFirst(raw, ['status'])),
+    priority: normalizePriority(readFirst(raw, ['priority', 'prioritas'])),
+    deadline: parseLocalizedDate(toOptionalString(readFirst(raw, ['deadline', 'due_date', 'jatuh_tempo']))),
+    publish_date: parseLocalizedDate(
+      toOptionalString(readFirst(raw, ['publish_date', 'tanggal_publish', 'publish'])),
+    ),
+    notes: toOptionalString(readFirst(raw, ['notes', 'catatan'])),
+    references: toStringArray(readFirst(raw, ['references', 'reference', 'referensi', 'references_links'])),
+    tags: toStringArray(readFirst(raw, ['tags', 'tag'])),
+    objective: toOptionalString(readFirst(raw, ['objective', 'tujuan_konten', 'tujuan'])),
+    target_audience: toOptionalString(readFirst(raw, ['target_audience', 'target_audiens'])),
+    key_message: toOptionalString(readFirst(raw, ['key_message', 'pesan_utama'])),
+    call_to_action: toOptionalString(readFirst(raw, ['call_to_action', 'cta'])),
+    script_or_outline: scriptOrOutline,
+    approval_status: toOptionalString(readFirst(raw, ['approval_status', 'status_approval'])),
+    revision_notes: toOptionalString(readFirst(raw, ['revision_notes', 'catatan_revisi'])),
+    source_brief: toOptionalString(readFirst(raw, ['source_brief', 'sumber_brief'])),
+    estimated_effort: toOptionalNumber(readFirst(raw, ['estimated_effort', 'estimasi_effort_jam'])),
+    actual_effort: toOptionalNumber(readFirst(raw, ['actual_effort', 'aktual_effort_jam'])),
+    content_pillar: toOptionalString(readFirst(raw, ['content_pillar', 'pilar_konten'])),
+    campaign_name: toOptionalString(readFirst(raw, ['campaign_name', 'nama_campaign'])),
+  }
+}
+
+function tryParseDirectJsonPrompt(prompt: string): AiParsedOutput | null {
+  const trimmed = prompt.trim()
+  if (!(trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('```'))) {
+    return null
+  }
+
+  try {
+    const asJson = extractJson(trimmed)
+    const parsed = JSON.parse(asJson) as unknown
+
+    if (Array.isArray(parsed)) {
+      const rows = parsed
+        .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+        .map((item, index) => mapRawItemToAiParsedItem(item, index))
+
+      if (rows.length === 0) return null
+
+      return aiParsedOutputSchema.parse({
+        action: rows.length === 1 ? 'create_one' : 'create_many',
+        items: rows,
+      })
+    }
+
+    if (typeof parsed === 'object' && parsed !== null) {
+      const direct = aiParsedOutputSchema.safeParse(parsed)
+      if (direct.success) {
+        return {
+          ...direct.data,
+          items: direct.data.items.map((item) => ({
+            ...item,
+            status: normalizeStatus(item.status),
+            priority: normalizePriority(item.priority),
+            deadline: parseLocalizedDate(item.deadline),
+            publish_date: parseLocalizedDate(item.publish_date),
+          })),
+        }
+      }
+
+      const record = parsed as Record<string, unknown>
+      const maybeItems = record.items
+      if (Array.isArray(maybeItems)) {
+        const rows = maybeItems
+          .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+          .map((item, index) => mapRawItemToAiParsedItem(item, index))
+
+        if (rows.length > 0) {
+          const requestedAction = toOptionalString(record.action)
+          const action = requestedAction === 'update_existing'
+            ? 'update_existing'
+            : rows.length === 1
+              ? 'create_one'
+              : 'create_many'
+
+          return aiParsedOutputSchema.parse({
+            action,
+            items: rows,
+          })
+        }
+      }
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
 function inferPriority(prompt: string): 'Low' | 'Medium' | 'High' | 'Urgent' {
   if (/urgent|mendesak|segera|asap/i.test(prompt)) return 'Urgent'
   if (/high|tinggi|prioritas tinggi/i.test(prompt)) return 'High'
@@ -372,6 +604,13 @@ Rules:
 - Use priority enum: Low, Medium, High, Urgent.
 - Dates must be ISO format YYYY-MM-DD.
 - For date-only fields (deadline, publish_date), never include time or timezone.
+- If user provides raw JSON with Indonesian keys, map keys correctly:
+  judul_konten->title, tipe_konten->content_type, prioritas->priority, tanggal_publish->publish_date,
+  tujuan_konten->objective, target_audiens->target_audience, pesan_utama->key_message,
+  status_approval->approval_status, catatan_revisi->revision_notes, pilar_konten->content_pillar,
+  nama_campaign->campaign_name, sumber_brief->source_brief, estimasi_effort_jam->estimated_effort,
+  aktual_effort_jam->actual_effort.
+- If platform/content type is an array, join as comma-separated string.
 - Put unknown extra data in custom_fields.
 - Language can follow user language (Indonesian/English).
 `
@@ -424,7 +663,8 @@ async function parseWithOpenAICompatible(prompt: string): Promise<AiParsedOutput
   }
 
   const asObject = JSON.parse(extractJson(content))
-  const validated = aiParsedOutputSchema.parse(asObject)
+  const normalized = tryParseDirectJsonPrompt(JSON.stringify(asObject))
+  const validated = normalized ?? aiParsedOutputSchema.parse(asObject)
 
   return {
     ...validated,
@@ -484,7 +724,8 @@ async function parseWithGoogle(prompt: string): Promise<AiParsedOutput> {
         `Google AI request timeout for model "${modelName}".`,
       )
 
-      const validated = aiParsedOutputSchema.parse(result.object)
+      const normalized = tryParseDirectJsonPrompt(JSON.stringify(result.object))
+      const validated = normalized ?? aiParsedOutputSchema.parse(result.object)
       return {
         ...validated,
         items: validated.items.map((item) => ({
@@ -503,6 +744,15 @@ async function parseWithGoogle(prompt: string): Promise<AiParsedOutput> {
 
 export async function parsePromptToStructured(prompt: string): Promise<ParsePromptResult> {
   const errors: string[] = []
+  const deterministicJsonParse = tryParseDirectJsonPrompt(prompt)
+
+  if (deterministicJsonParse) {
+    return {
+      result: deterministicJsonParse,
+      source: 'fallback',
+      providerErrors: errors,
+    }
+  }
 
   if (process.env.OPENAI_API_KEY) {
     try {

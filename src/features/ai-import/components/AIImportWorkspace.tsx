@@ -28,9 +28,22 @@ function emptyParsedItem() {
     status: 'To Do' as const,
     priority: 'Medium' as const,
     deadline: '',
+    publish_date: '',
     notes: '',
     references: [] as string[],
     tags: [] as string[],
+    objective: '',
+    target_audience: '',
+    key_message: '',
+    call_to_action: '',
+    script_or_outline: '',
+    approval_status: '',
+    revision_notes: '',
+    source_brief: '',
+    estimated_effort: undefined as number | undefined,
+    actual_effort: undefined as number | undefined,
+    content_pillar: '',
+    campaign_name: '',
   }
 }
 
@@ -39,6 +52,23 @@ function normalizeText(value: string) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function toCommaSeparated(value: string[] | undefined) {
+  return Array.isArray(value) ? value.join(', ') : ''
+}
+
+function toStringArray(value: string) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function toNumberOrUndefined(value: string) {
+  if (!value.trim()) return undefined
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : undefined
 }
 
 function findTaskByLabel(tasks: TaskTarget[], label: string | undefined): TaskTarget | undefined {
@@ -134,6 +164,21 @@ export function AIImportWorkspace({ tasks }: { tasks: TaskTarget[] }) {
         language === 'en'
           ? 'Target from AI is invalid. Please choose target task again.'
           : 'Target dari AI tidak valid. Pilih ulang task target.',
+      basicInfoTitle: language === 'en' ? 'Basic Information' : 'Informasi Dasar',
+      basicInfoDesc:
+        language === 'en'
+          ? 'Core details for the content/task to be worked on.'
+          : 'Detail inti untuk konten/task yang akan dikerjakan.',
+      operationTitle: language === 'en' ? 'Operational' : 'Operasional',
+      operationDesc:
+        language === 'en'
+          ? 'Work status, priority, deadlines, and production metadata.'
+          : 'Status kerja, prioritas, deadline, dan metadata produksi.',
+      strategyTitle: language === 'en' ? 'Content Strategy' : 'Strategi Konten',
+      strategyDesc:
+        language === 'en'
+          ? 'Additional operational fields to clarify briefs and creative outputs.'
+          : 'Field operasional tambahan untuk memperjelas brief dan output kreatif.',
       titleLabel: 'Title',
       briefLabel: 'Brief',
       platformLabel: 'Platform',
@@ -141,7 +186,28 @@ export function AIImportWorkspace({ tasks }: { tasks: TaskTarget[] }) {
       statusLabel: 'Status',
       priorityLabel: 'Priority',
       deadlineLabel: language === 'en' ? 'Deadline' : 'Deadline',
+      publishDateLabel: language === 'en' ? 'Publish Date' : 'Tanggal Publish',
       notesLabel: 'Notes',
+      tagsLabel: language === 'en' ? 'Tags (comma-separated)' : 'Tags (pisahkan koma)',
+      referencesLabel:
+        language === 'en'
+          ? 'References (URL, comma-separated)'
+          : 'Referensi (URL, pisahkan koma)',
+      objectiveLabel: language === 'en' ? 'Objective' : 'Tujuan Konten',
+      audienceLabel: language === 'en' ? 'Target Audience' : 'Target Audiens',
+      keyMessageLabel: language === 'en' ? 'Key Message' : 'Pesan Utama',
+      ctaLabel: language === 'en' ? 'Call To Action' : 'Call To Action',
+      approvalLabel: language === 'en' ? 'Approval Status' : 'Status Approval',
+      pillarLabel: language === 'en' ? 'Content Pillar' : 'Pilar Konten',
+      campaignLabel: language === 'en' ? 'Campaign Name' : 'Nama Campaign',
+      sourceBriefLabel: language === 'en' ? 'Source Brief' : 'Sumber Brief',
+      estimatedEffortLabel: language === 'en' ? 'Estimated Effort (hours)' : 'Estimasi Effort (jam)',
+      actualEffortLabel: language === 'en' ? 'Actual Effort (hours)' : 'Aktual Effort (jam)',
+      scriptLabel: language === 'en' ? 'Script / Outline' : 'Script / Outline',
+      revisionLabel: language === 'en' ? 'Revision Notes' : 'Catatan Revisi',
+      tagsPlaceholder:
+        language === 'en' ? 'promo, skincare, educational' : 'promo, skincare, edukasi',
+      referencesPlaceholder: 'https://... , https://...',
       characterUnit: language === 'en' ? 'characters' : 'karakter',
       enterHint: language === 'en' ? 'Enter: Parse, Shift+Enter: New line' : 'Enter: Parse, Shift+Enter: New line',
     }),
@@ -340,10 +406,12 @@ export function AIImportWorkspace({ tasks }: { tasks: TaskTarget[] }) {
             {parsedData.items.map((item, index) => {
               const targetTaskId =
                 item.target_task_id && taskIdSet.has(item.target_task_id) ? item.target_task_id : ''
+              const statusValue = item.status === 'Backlog' ? 'To Do' : item.status
+              const priorityValue = item.priority ?? 'Medium'
 
               return (
                 <Card key={index} className="shadow-sm border-border/50">
-                  <CardHeader className="pb-2">
+                  <CardHeader className="pb-0">
                     <div className="flex items-center justify-between">
                       <Badge variant="outline">
                         {labels.itemLabel} {index + 1}
@@ -353,9 +421,9 @@ export function AIImportWorkspace({ tasks }: { tasks: TaskTarget[] }) {
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CardContent className="space-y-5">
                     {parsedData.action === 'update_existing' && (
-                      <div className="md:col-span-2 space-y-1">
+                      <div className="space-y-1">
                         <label className="text-sm font-medium">{labels.targetTaskLabel}</label>
                         <Select
                           value={targetTaskId}
@@ -380,66 +448,243 @@ export function AIImportWorkspace({ tasks }: { tasks: TaskTarget[] }) {
                       </div>
                     )}
 
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="text-sm font-medium">{labels.titleLabel}</label>
-                      <Input value={item.title} onChange={(e) => updateItem(index, 'title', e.target.value)} />
+                    <div className="space-y-5 rounded-xl border border-border/50 bg-muted/10 p-4">
+                      <div>
+                        <h3 className="text-base font-semibold">{labels.basicInfoTitle}</h3>
+                        <p className="text-xs text-muted-foreground">{labels.basicInfoDesc}</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-sm font-medium">{labels.titleLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.title}
+                            onChange={(e) => updateItem(index, 'title', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.platformLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.platform ?? ''}
+                            onChange={(e) => updateItem(index, 'platform', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.contentTypeLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.content_type ?? ''}
+                            onChange={(e) => updateItem(index, 'content_type', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-sm font-medium">{labels.briefLabel}</label>
+                          <Textarea
+                            className="min-h-[110px] bg-muted/30"
+                            value={item.brief ?? ''}
+                            onChange={(e) => updateItem(index, 'brief', e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="md:col-span-2 space-y-1">
-                      <label className="text-sm font-medium">{labels.briefLabel}</label>
-                      <Textarea value={item.brief ?? ''} onChange={(e) => updateItem(index, 'brief', e.target.value)} />
+                    <div className="space-y-5 rounded-xl border border-border/50 bg-muted/10 p-4">
+                      <div>
+                        <h3 className="text-base font-semibold">{labels.operationTitle}</h3>
+                        <p className="text-xs text-muted-foreground">{labels.operationDesc}</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.statusLabel}</label>
+                          <Select value={statusValue} onValueChange={(value) => updateItem(index, 'status', value)}>
+                            <SelectTrigger className="bg-muted/30">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SELECTABLE_STATUSES.map((status) => (
+                                <SelectItem key={status} value={status}>
+                                  {status}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.priorityLabel}</label>
+                          <Select value={priorityValue} onValueChange={(value) => updateItem(index, 'priority', value)}>
+                            <SelectTrigger className="bg-muted/30">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {CONTENT_PRIORITIES.map((priority) => (
+                                <SelectItem key={priority} value={priority}>
+                                  {priority}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.deadlineLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            type="date"
+                            value={item.deadline ?? ''}
+                            onChange={(e) => updateItem(index, 'deadline', e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.publishDateLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            type="date"
+                            value={item.publish_date ?? ''}
+                            onChange={(e) => updateItem(index, 'publish_date', e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-sm font-medium">{labels.tagsLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            placeholder={labels.tagsPlaceholder}
+                            value={toCommaSeparated(item.tags)}
+                            onChange={(e) => updateItem(index, 'tags', toStringArray(e.target.value))}
+                          />
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-sm font-medium">{labels.referencesLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            placeholder={labels.referencesPlaceholder}
+                            value={toCommaSeparated(item.references)}
+                            onChange={(e) => updateItem(index, 'references', toStringArray(e.target.value))}
+                          />
+                        </div>
+
+                        <div className="space-y-1 md:col-span-2 lg:col-span-4">
+                          <label className="text-sm font-medium">{labels.notesLabel}</label>
+                          <Textarea
+                            className="bg-muted/30"
+                            value={item.notes ?? ''}
+                            onChange={(e) => updateItem(index, 'notes', e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">{labels.platformLabel}</label>
-                      <Input value={item.platform ?? ''} onChange={(e) => updateItem(index, 'platform', e.target.value)} />
-                    </div>
+                    <div className="space-y-5 rounded-xl border border-border/50 bg-muted/10 p-4">
+                      <div>
+                        <h3 className="text-base font-semibold">{labels.strategyTitle}</h3>
+                        <p className="text-xs text-muted-foreground">{labels.strategyDesc}</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.objectiveLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.objective ?? ''}
+                            onChange={(e) => updateItem(index, 'objective', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.audienceLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.target_audience ?? ''}
+                            onChange={(e) => updateItem(index, 'target_audience', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.keyMessageLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.key_message ?? ''}
+                            onChange={(e) => updateItem(index, 'key_message', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.ctaLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.call_to_action ?? ''}
+                            onChange={(e) => updateItem(index, 'call_to_action', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.approvalLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.approval_status ?? ''}
+                            onChange={(e) => updateItem(index, 'approval_status', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.pillarLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.content_pillar ?? ''}
+                            onChange={(e) => updateItem(index, 'content_pillar', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.campaignLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.campaign_name ?? ''}
+                            onChange={(e) => updateItem(index, 'campaign_name', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.sourceBriefLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            value={item.source_brief ?? ''}
+                            onChange={(e) => updateItem(index, 'source_brief', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.estimatedEffortLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            type="number"
+                            value={item.estimated_effort ?? ''}
+                            onChange={(e) => updateItem(index, 'estimated_effort', toNumberOrUndefined(e.target.value))}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-sm font-medium">{labels.actualEffortLabel}</label>
+                          <Input
+                            className="bg-muted/30"
+                            type="number"
+                            value={item.actual_effort ?? ''}
+                            onChange={(e) => updateItem(index, 'actual_effort', toNumberOrUndefined(e.target.value))}
+                          />
+                        </div>
 
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">{labels.contentTypeLabel}</label>
-                      <Input value={item.content_type ?? ''} onChange={(e) => updateItem(index, 'content_type', e.target.value)} />
-                    </div>
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-sm font-medium">{labels.scriptLabel}</label>
+                          <Textarea
+                            className="min-h-[100px] bg-muted/30"
+                            value={item.script_or_outline ?? ''}
+                            onChange={(e) => updateItem(index, 'script_or_outline', e.target.value)}
+                          />
+                        </div>
 
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">{labels.statusLabel}</label>
-                      <Select value={item.status} onValueChange={(value) => updateItem(index, 'status', value)}>
-                        <SelectTrigger className="bg-muted/20">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SELECTABLE_STATUSES.map((status) => (
-                            <SelectItem key={status} value={status}>
-                              {status}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">{labels.priorityLabel}</label>
-                      <Select value={item.priority} onValueChange={(value) => updateItem(index, 'priority', value)}>
-                        <SelectTrigger className="bg-muted/20">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CONTENT_PRIORITIES.map((priority) => (
-                            <SelectItem key={priority} value={priority}>
-                              {priority}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">{labels.deadlineLabel}</label>
-                      <Input type="date" value={item.deadline ?? ''} onChange={(e) => updateItem(index, 'deadline', e.target.value)} />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-sm font-medium">{labels.notesLabel}</label>
-                      <Input value={item.notes ?? ''} onChange={(e) => updateItem(index, 'notes', e.target.value)} />
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-sm font-medium">{labels.revisionLabel}</label>
+                          <Textarea
+                            className="min-h-[100px] bg-muted/30"
+                            value={item.revision_notes ?? ''}
+                            onChange={(e) => updateItem(index, 'revision_notes', e.target.value)}
+                          />
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
